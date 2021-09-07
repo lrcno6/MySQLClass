@@ -1,44 +1,50 @@
 #ifndef _MYSQL_CLASS_H_
 #define _MYSQL_CLASS_H_
-#include<string>
-#include<mysql/mysql.h>
-#include"table.h"
-namespace mysql_class{
-	class MySQL{
-		public:
-			MySQL():m_connected(false){
-				mysql_init(&m_sql);
-			}
-			~MySQL(){
-				close();
-			}
-			bool connect(const char *host,const char *user,const char *password,const char *database){
-				return m_connected?false:m_connected=mysql_real_connect(&m_sql,host,user,password,database,0,nullptr,CLIENT_FOUND_ROWS);
-			}
-			bool connect(const std::string &host,const std::string &user,const std::string &password,const std::string &database){
-				return connect(host.c_str(),user.c_str(),password.c_str(),database.c_str());
-			}
-			void close(){
-				if(m_connected){
-					mysql_close(&m_sql);
-					m_connected=false;
+	#include<string>
+	#include<vector>
+	#include<stdexcept>
+	#include<mysql/mysql.h>
+
+	namespace mysql_class{
+		typedef std::vector<std::string> Row;
+		typedef std::vector<Row> Table;
+		
+		class MySQL{
+			public:
+				MySQL():m_mysql(mysql_init(nullptr)){
+					if(m_mysql==nullptr)
+						throw std::runtime_error("MySQL::MySQL(): MySQL Init Failed!");
 				}
-			}
-			bool command(const char *cmd){
-				return !mysql_query(&m_sql,cmd);
-			}
-			bool command(const std::string &cmd){
-				return command(cmd.c_str());
-			}
-			Table result(){
-				auto res=mysql_store_result(&m_sql);
-				Table table(res);
-				mysql_free_result(res);
-				return table;
-			}
-		private:
-			bool m_connected;
-			MYSQL m_sql;
-	};
-}
+				MySQL(const MySQL&)=delete;
+				MySQL(MySQL &&other)noexcept:m_mysql(other.m_mysql){
+					other.m_mysql=nullptr;
+				}
+				virtual ~MySQL()noexcept{
+					mysql_close(m_mysql);
+				}
+
+				MySQL& operator=(const MySQL&)=delete;
+				MySQL& operator=(MySQL&&)=delete;
+
+				void connect(const char *host,const char *user,const char *passwd,const char *db){
+					if(mysql_real_connect(m_mysql,host,user,passwd,db,0,nullptr,CLIENT_FOUND_ROWS)==nullptr)
+						throw std::invalid_argument(mysql_error(m_mysql));
+				}
+				void connect(const std::string &host,const std::string &user,const std::string &passwd,const std::string &db){
+					connect(host.c_str(),user.c_str(),passwd.c_str(),db.c_str());
+				}
+				void query(const char *cmd){
+					if(mysql_query(m_mysql,cmd))
+						throw std::runtime_error(mysql_error(m_mysql));
+				}
+				void query(const std::string &cmd){
+					query(cmd.c_str());
+				}
+				Table get_result();
+			protected:
+				MYSQL *m_mysql;
+		};
+
+		void default_print_tab(const Table&);
+	}
 #endif
